@@ -55,26 +55,68 @@ function validateForm() {
   return isValid;
 }
 
-function handleSubmit(event) {
+async function handleSubmit(event) {
   event.preventDefault();
   if (!validateForm()) return;
 
+  const endpoint = window.APPOINTMENT_FORM_ENDPOINT?.trim();
+  if (!endpoint || endpoint.includes('PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE')) {
+    feedback.textContent =
+      "Le service de prise de rendez-vous n'est pas disponible. Merci de nous contacter directement par email ou téléphone.";
+    feedback.classList.remove('success');
+    feedback.classList.add('error');
+    console.error('APPOINTMENT_FORM_ENDPOINT is missing or not configured.');
+    return;
+  }
+
   const formData = new FormData(bookingForm);
-  const summary = {
+  const payload = {
     name: formData.get('name'),
     email: formData.get('email'),
     phone: formData.get('phone'),
-    service: serviceDetails[formData.get('service')]?.name ?? '—',
+    service: formData.get('service'),
+    serviceLabel: serviceDetails[formData.get('service')]?.name ?? '—',
     date: formData.get('date'),
     time: formData.get('time'),
+    message: formData.get('message'),
+    consent: formData.get('consent') === 'on',
+    submittedAt: new Date().toISOString(),
   };
 
-  feedback.textContent = `Merci ${summary.name}! Nous vous recontactons à ${summary.email} pour confirmer votre rendez-vous.`;
-  feedback.classList.remove('error');
-  feedback.classList.add('success');
+  feedback.textContent = 'Envoi de votre demande en cours…';
+  feedback.classList.remove('success', 'error');
 
-  bookingForm.reset();
-  updateSummary('');
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Réponse du serveur invalide (${response.status})`);
+    }
+
+    const result = await response.json().catch(() => ({}));
+    const confirmationMessage =
+      result.message ||
+      `Merci ${payload.name} ! Nous avons bien reçu votre demande et vous enverrons une confirmation à ${payload.email}.`;
+
+    feedback.textContent = confirmationMessage;
+    feedback.classList.remove('error');
+    feedback.classList.add('success');
+
+    bookingForm.reset();
+    updateSummary('');
+  } catch (error) {
+    console.error('Erreur lors de la soumission du formulaire :', error);
+    feedback.textContent =
+      "Une erreur est survenue lors de l'envoi. Merci de réessayer ou de nous contacter directement.";
+    feedback.classList.remove('success');
+    feedback.classList.add('error');
+  }
 }
 
 function toggleScrollButton() {
